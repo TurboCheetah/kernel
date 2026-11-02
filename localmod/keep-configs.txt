@@ -1,0 +1,13 @@
+# Kconfig symbols never trimmed, for modules localmodconfig can't map by name.
+# Lenovo WMI drivers are built as lenovo-wmi-*.ko from renamed objects.
+CONFIG_LENOVO_WMI_HOTKEY_UTILITIES
+CONFIG_LENOVO_WMI_CAMERA
+CONFIG_LENOVO_WMI_CAPDATA
+CONFIG_LENOVO_WMI_EVENTS
+CONFIG_LENOVO_WMI_HELPERS
+CONFIG_LENOVO_WMI_GAMEZONE
+CONFIG_LENOVO_WMI_TUNING
+
+# Congestion-control modules the ebuild builds on purpose (USE=bbr3); tiny.
+CONFIG_TCP_CONG_CUBIC
+CONFIG_TCP_CONG_BBR

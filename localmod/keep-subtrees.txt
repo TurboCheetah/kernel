@@ -1,0 +1,7 @@
+# Source dirs whose Kconfig symbols are never trimmed (whole subsystem kept).
+# docker/tailscale/mullvad load netfilter + tc bits on demand.
+net/netfilter
+net/ipv4/netfilter
+net/ipv6/netfilter
+net/bridge/netfilter
+net/sched

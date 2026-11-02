@@ -1,0 +1,34 @@
+# Modules to keep even when they aren't loaded right now (on-demand use).
+# One module name per line (as in lsmod: underscores). Everything loaded at
+# generation time is kept automatically.
+
+# VPN / container networking (wireguard-tools, docker networks, libvirt)
+wireguard
+br_netfilter
+macvlan
+ipvlan
+vxlan
+dummy
+vhost
+vhost_net
+vhost_iotlb
+tap
+macvtap
+
+# Block / filesystems for the odd external drive or image
+loop
+zram
+dm_crypt
+exfat
+ntfs3
+isofs
+udf
+squashfs
+nls_utf8
+nls_iso8859_1
+nls_cp437
+
+# Admin tooling (turbostat, sensors, ddcutil/openrgb)
+msr
+cpuid
+i2c_dev

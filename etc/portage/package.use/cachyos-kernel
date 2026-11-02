@@ -1,0 +1,5 @@
+# autofdo/propeller only help when you feed a perf profile at build time
+# (CLANG_AUTOFDO_PROFILE / CLANG_PROPELLER_PROFILE_PREFIX), which this system doesn't.
+# Without one they still add -gmlt line tables / basic-block address maps to every
+# object: build cost, no runtime gain.
+sys-kernel/cachyos-kernel clang -autofdo -propeller
