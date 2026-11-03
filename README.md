@@ -1,77 +1,113 @@
-# This is my personal kernel, please modify it to fit your use case
+# cachyos-kernel build configuration
 
-Currently: [CachyOS](https://github.com/CachyOS/linux-cachyos) as a Gentoo
-distribution kernel (`sys-kernel/cachyos-kernel` from the
+Configuration for building the [CachyOS](https://github.com/CachyOS/linux-cachyos)
+kernel as a Gentoo distribution kernel (`sys-kernel/cachyos-kernel` from the
 [CachyOS-kernels](https://github.com/Szowisz/CachyOS-kernels) overlay), trimmed
-with config fragments so it builds fast. Host: Ryzen 7 4800H Lenovo laptop with a
-GTX 1660 Ti (nvidia-drivers), run as a headless docker server.
+with kernel config fragments to reduce build time.
 
-Builds went from ~1.5–2 h to ~17 min (7.3.0-r3): 3266→2226 built-in options,
-6373→~570 modules.
+The configuration targets a single host: a Lenovo laptop with a Ryzen 7 4800H and
+a GTX 1660 Ti (`x11-drivers/nvidia-drivers`), running as a headless Docker server.
 
-Install with `doas ./install.sh`, which backs up the originals to
-`/root/kernel-tune-backup-<timestamp>/`, then rebuild the kernel **and**
-nvidia-drivers together:
+## Results
+
+Measured on 7.3.0-r3:
+
+| | Stock | Trimmed |
+| --- | --- | --- |
+| Build time | 1.5–2 h | ~17 min |
+| Built-in options | 3266 | 2226 |
+| Modules | 6373 | ~570 |
+
+## Installation
+
+Run the installer as root. It backs up the existing files to
+`/root/kernel-tune-backup-<timestamp>/` before installing the new ones.
+
+```sh
+doas ./install.sh
+```
+
+Then rebuild the kernel and the NVIDIA driver together:
 
 ```sh
 emerge -1 sys-kernel/cachyos-kernel x11-drivers/nvidia-drivers
 ```
 
-## Files
+## Repository layout
 
-| File | Installed to | Purpose |
+| Path | Installed to | Purpose |
 | --- | --- | --- |
-| `etc/kernel/config.d/10-hardware-trim.config` | `/etc/kernel/config.d/` | Hand-picked: other GPUs, server NICs, InfiniBand, TV/DVB, staging, … |
-| `etc/kernel/config.d/20-no-debug-info.config` | `/etc/kernel/config.d/` | No DWARF (the ebuild strips it anyway). Also drops BTF and sched_ext. |
-| `etc/kernel/config.d/30-server-localmod.config` | `/etc/kernel/config.d/` | **Generated.** Disables every module this host doesn't use. |
-| `etc/kernel/config.d/40-overrides.config` | `/etc/kernel/config.d/` | Hand fixes: qxl instead of amdgpu as nvidia's TTM-helper provider; no Intel QAT. |
-| `etc/portage/package.use/cachyos-kernel` | `/etc/portage/package.use/` | `-autofdo -propeller` (no profile, so they only add cost). |
-| `etc/portage/env/kernel-jobs.conf` | `/etc/portage/env/` + `package.env` | `-j16` for kernel builds. |
-| `localmod/` | — | Generator for the 30- fragment and its keep lists. |
+| `etc/kernel/config.d/10-hardware-trim.config` | `/etc/kernel/config.d/` | Disables hardware support that is never used here: other GPUs, server NICs, InfiniBand, TV/DVB, staging drivers. |
+| `etc/kernel/config.d/20-no-debug-info.config` | `/etc/kernel/config.d/` | Disables DWARF debug info, which the ebuild strips anyway. Also disables BTF and sched_ext. |
+| `etc/kernel/config.d/30-server-localmod.config` | `/etc/kernel/config.d/` | Generated. Disables every module this host does not use. |
+| `etc/kernel/config.d/40-overrides.config` | `/etc/kernel/config.d/` | Manual overrides: QXL replaces amdgpu as the TTM helper provider for NVIDIA; Intel QAT disabled. |
+| `etc/portage/package.use/cachyos-kernel` | `/etc/portage/package.use/` | Sets `-autofdo -propeller`. No profile is available, so these flags only add build cost. |
+| `etc/portage/env/kernel-jobs.conf` | `/etc/portage/env/` and `package.env` | Builds the kernel with `-j16`. |
+| `localmod/` | Not installed | Generator for the `30-` fragment and its keep lists. |
 
-kernel-build.eclass merges `/etc/kernel/config.d/*.config` last, in name order,
-on top of the CachyOS config and the ebuild's USE-flag tweaks.
+`kernel-build.eclass` applies `/etc/kernel/config.d/*.config` in name order, after
+the CachyOS base config and the ebuild's USE-flag adjustments.
 
-## What's kept by the 30- fragment
+## Module selection
 
-- every module loaded when it was generated (`/proc/modules`)
-- `localmod/keep-modules.txt`: on-demand things like wireguard, docker network
-  drivers, vhost, loop/zram/dm-crypt, exfat/ntfs3/iso/udf/squashfs
-- `localmod/keep-subtrees.txt`: all of netfilter and net/sched
-- `localmod/keep-configs.txt`: symbols localmodconfig can't map (Lenovo WMI), tcp cubic/bbr
+The `30-` fragment keeps:
 
-Everything else that was a module is gone: USB serial/ethernet dongles, game
-controllers, most HID vendor drivers, amdgpu, NFS/CIFS, md-raid, VFIO, etc.
-Built-ins are untouched, so boot (NVMe, AHCI, btrfs, ext4, USB HID, fuse) is unaffected.
+- every module loaded when the fragment was generated (from `/proc/modules`)
+- modules listed in `localmod/keep-modules.txt`: modules loaded on demand, such as
+  WireGuard, Docker network drivers, vhost, loop, zram, dm-crypt, and the exFAT,
+  NTFS3, ISO 9660, UDF and SquashFS filesystems
+- every symbol in the subtrees listed in `localmod/keep-subtrees.txt`: all of
+  netfilter and `net/sched`
+- symbols listed in `localmod/keep-configs.txt`: options localmodconfig cannot map
+  to a loaded module, such as Lenovo WMI and the CUBIC and BBR TCP congestion
+  control algorithms
 
-## Gotchas
+All other modules are disabled, including USB serial and Ethernet adapters, game
+controllers, most vendor HID drivers, amdgpu, NFS, CIFS, MD RAID and VFIO.
+Built-in options are not changed, so boot-critical support (NVMe, AHCI, Btrfs,
+ext4, USB HID, FUSE) is unaffected.
 
-- **nvidia-drivers** needs `DRM_TTM_HELPER`, which only an in-tree DRM driver can
-  select. localmodconfig keeps amdgpu for that (the biggest driver in the tree), so
-  `40-overrides` swaps in tiny `DRM_QXL`. With amdgpu/i915/xe gone, nvidia-drm
-  builds without HDCP (it checks `IS_ENABLED(CONFIG_DRM_DISPLAY_HDCP_HELPER)`).
-- Reinstalling the **same** kernel version leaves the previous build's modules in
-  `/lib/modules/<ver>`. Remove `.ko` files not in the package's `CONTENTS`, then `depmod`.
+## Known issues
 
-## Something stopped working / new hardware
+- `nvidia-drivers` requires `DRM_TTM_HELPER`, which can only be selected by an
+  in-tree DRM driver. localmodconfig keeps amdgpu for this purpose, which is the
+  largest driver in the tree. `40-overrides.config` enables the much smaller
+  `DRM_QXL` instead. Because amdgpu, i915 and xe are all disabled, `nvidia-drm` is
+  built without HDCP support; it checks
+  `IS_ENABLED(CONFIG_DRM_DISPLAY_HDCP_HELPER)`.
+- Reinstalling the same kernel version leaves modules from the previous build in
+  `/lib/modules/<version>`. Remove any `.ko` files not listed in the package's
+  `CONTENTS` file, then run `depmod`.
 
-Add the module name to `localmod/keep-modules.txt` (or a symbol to
-`keep-configs.txt`), regenerate, reinstall, rebuild.
+## Adding hardware support
 
-## Regenerating (e.g. after a big kernel version jump)
+If a device stops working, or new hardware is added:
 
-The fragment only ever *disables* modules, so new modules in future kernels stay
-at the CachyOS default (built). Regenerating just trims those again.
+1. Add the module name to `localmod/keep-modules.txt`, or the config symbol to
+   `localmod/keep-configs.txt`.
+2. Regenerate the fragment (see below).
+3. Run `install.sh` and rebuild the kernel.
+
+## Regenerating the module fragment
+
+The fragment only disables modules. Modules added in newer kernels keep the
+CachyOS default (built as modules) until the fragment is regenerated, so
+regenerate it after a major kernel version update.
+
+Run this while the host's normal workload (Docker, VPNs) is active, so that
+`/proc/modules` reflects actual use.
 
 ```sh
 EB=/var/db/repos/CachyOS-kernels/sys-kernel/cachyos-kernel/cachyos-kernel-<ver>.ebuild
 W=/var/tmp/notmpfs/portage/sys-kernel/cachyos-kernel-<ver>/work
-doas mv /etc/kernel/config.d/30-server-localmod.config /root/   # base config must not include it
+
+# The base config must be generated without the existing fragment.
+doas mv /etc/kernel/config.d/30-server-localmod.config /root/
 doas env PORTAGE_TMPDIR=/var/tmp/notmpfs ebuild $EB clean configure
+
 mkdir -p /tmp/k/src && doas tar -C $W/cachyos-* -cf - . | tar -C /tmp/k/src -xf -
 doas cat $W/modprep/.config > /tmp/k/base.config
 ./localmod/gen-fragment.sh /tmp/k/src /tmp/k/base.config etc/kernel/config.d/30-server-localmod.config
+
 doas ./install.sh && doas env PORTAGE_TMPDIR=/var/tmp/notmpfs ebuild $EB clean
 ```
-
-Run it while the system's normal workload (docker, VPNs) is up, so `/proc/modules` is representative.
